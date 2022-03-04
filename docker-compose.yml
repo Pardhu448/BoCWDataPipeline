@@ -1,0 +1,48 @@
+version: '3.6'
+
+services:
+
+  airflow:
+      image: custom-airflow
+      container_name: airflow
+      volumes:
+        - ./dags:/opt/airflow/dags
+        - ./sql:/opt/airflow/sql
+        - ./bashScripts:/opt/airflow/bashScripts  
+        - ./tests:/opt/airflow/tests
+        - ./data:/opt/airflow/data
+        - ./requirements.txt:/opt/airflow/requirements.txt
+      environment: 
+        - AIRFLOW_HOME=/opt/airflow
+        - AIRFLOW__CORE__FERNET_KEY=${FERNET_KEY}
+        - AIRFLOW__CORE__EXECUTOR=${EXECUTOR}
+        - AIRFLOW__CORE__LOAD_EXAMPLES=false
+        - AIRFLOW__CORE__LOAD_DEFAULT_CONNECTIONS=false
+        - AIRFLOW__API__AUTH_BACKEND=${AIRFLOW_API_BACKEND}
+      ports:
+        - 8080:8080
+      links:
+        - mongo
+      command: 'bash -c "pip3 install -r requirements.txt && airflow db init && airflow webserver -D && airflow scheduler -D"'
+  
+  mongo:
+    container_name: bocwmongo
+    image: mongo:5
+    volumes:
+      - ./data/bocw_mongodb:/data/db
+    ports:
+      - "27017:27017"    
+    environment:
+      - MONGO_URI=${MONGO_URI}
+      - MONGO_DB=${MONGO_DB}
+      - MONGO_COLLECTION=${MONGO_COLLECTION}
+      - TEST_SIZE=${TEST_SIZE}
+
+  mongoInit:
+    container_name: mongoDevSetup
+    build: ./mongoinitdev
+    image: mongoinitdev
+    links:
+      - mongo
+
+
