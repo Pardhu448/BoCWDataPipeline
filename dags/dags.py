@@ -1,70 +1,71 @@
+from airflow.models import Variable
 from airflow import DAG
 from airflow.operators.bash_operator import BashOperator
 from airflow.operators.python import PythonOperator
-from dotenv import load_dotenv
-from os.path import join, dirname
-
 from settings import default_args
 
-from google.cloud import bigquery 
-import json
+from dotenv import load_dotenv
+from os.path import join, dirname
+from datetime import datetime
+
+from dataTransfers import DataTransfer, CMSTransfer, RSTTransfer, CallerTransfer, AssigneeTransfer, CallStatusTransfer, OfficialsTransfer, StatusTransfer
+from constants import dataTransferConfig
 
 dotenv_path = join(dirname(__file__), '.env')
 load_dotenv(dotenv_path)
 
-def loadJsonToBigQuery(srcJsonPath):
-  '''To Load json data into bigquery '''
-  #BQ_CONN_ID = 'bq_gcp_conn'
-  #BQ_PROJECT = 'bocwdatapipeline'
-  BQ_DATASET = 'BoCWGrievancesData'
-  client = bigquery.Client()
-  dataset_id = BQ_DATASET
-  table_id = 'BoCWMasterTable_Ver00'
+tablesToUpdate = Variable.get('BoCWCentralStorageTables').split(';')
+#{'BoCWCentralStorageTables': 'CMS;RST;Caller;Assignee;CallStatus;Officials;Status'}
 
-  dataset_ref = client.dataset(dataset_id)
-  table_ref = dataset_ref.table(table_id)
-  job_config = bigquery.LoadJobConfig()
-  job_config.source_format = bigquery.SourceFormat.NEWLINE_DELIMITED_JSON
-  job_config.autodetect = True
-  
-  with open(srcJsonPath, 'r') as j:
-     contents = json.loads(j.read())
-  
-  def replaceAllDollarsInKeys(d):
-    new = {}
-    for k, v in d.items():
-        k = k.encode('raw-unicode-escape').split(b'\\u')[0].decode()
-        if isinstance(v, dict):
-            v = replaceAllDollarsInKeys(v)
-        new[k.replace('$', '_')] = v
-    return new
-  parsedJsonArray = [replaceAllDollarsInKeys(eaDoc) for eaDoc in contents]
-   
-  with open(srcJsonPath, 'w') as f:
-    f.write('\n'.join(map(json.dumps, parsedJsonArray)))
-    
-  with open(srcJsonPath, "rb") as source_file:
-    job = client.load_table_from_file(source_file, 
-            table_ref, 
-            location="asia-south1",  # Must match the destination dataset location.
-            job_config=job_config)  # API request
+dataTransferConfigMap = {'CMS' : dataTransferConfig(CMSTransfer, {'mongoDumpPath': 'cmsDataSnapShot.json', 'taskName': 'CMSDatafromMongo'}),
+                         'RST': dataTransferConfig(RSTTransfer, {'mongoDumpPath': 'rstDataSnapShot.json', 'taskName': 'RSTDatafromMongo'}),
+                         'Caller' : dataTransferConfig(CallerTransfer, {'csvDumpPath': 'exotelCallerDataSnapShot.csv', 
+                                                                        'taskName': 'CallerDataFromExotel',
+                                                                        'gsUrl': '',
+                                                                        'sheetName': 'Callers'}),
+                         'Assignee': dataTransferConfig(AssigneeTransfer, {'csvDumpPath': 'assigneeDataSnapShot.csv', 
+                                                                           'taskName': 'AssigneeDataFromGS',
+                                                                           'gsUrl': '', 
+                                                                           'sheetName': 'Assignee'}),
+                         'CallStatus': dataTransferConfig(CallStatusTransfer, {'csvDumpPath': 'callSatusSnapShot.csv', 
+                                                                               'taskName': 'CallStatusDataFromGS',
+                                                                               'gsUrl': '',
+                                                                               'sheetName': 'CallStatus'}),
+                         'Officials' : dataTransferConfig(OfficialsTransfer, {'csvDumpPath': 'officialsDataSnapShot.csv', 
+                                                                              'taskName': 'OfficialsDataFromGS', 
+                                                                              'gsUrl': '',
+                                                                              'sheetName': 'Officials'}),
+                         'Status': dataTransferConfig(StatusTransfer, {'csvDumpPath': 'statusDataSnapShot.csv', 
+                                                                       'taskName': 'StatusDataFromGS',
+                                                                       'gsUrl': '',
+                                                                       'sheetName': 'Status'}) }
 
-  job.result()  # Waits for table load to complete.
+cobDate = datetime.utcnow().date()
 
+with DAG('BoCWDailyDataUpdate', default_args=default_args, schedule_interval=None) as dag:
+# DAG for the daily update of data from App and Google Sheets into BigQuery Central Storage        
+    for eaTable in tablesToUpdate:
+        inputArgs = dataTransferConfigMap[eaTable]['inputArgs']
+        taskTag = inputArgs['taskName']
+        dataTransferHandle = dataTransferConfigMap[eaTable]['class'](cobDate, eaTable, **inputArgs)
+        fetchDataFromSource = dataTransferHandle.fetchDataFromSource('_'.join(['Fetch', taskTag]))
+        loadDataToBigquery = dataTransferHandle.loadDataToBigQuery('_'.join(['Load', taskTag]))
+        fetchDataFromSource >> loadDataToBigquery
 
-dag = DAG('BoCWDataPipeline_Dev', default_args=default_args, schedule_interval=None)
+# Dags to provide views based on the filtering criteria of IA associsates or Officials
+# Once the filtering criteria is configured, filtered data is made available by updating 
+# data into Google Sheets. The updation interval depends on the date range of filtering criteria
+# and could be either Monthly or Qurterly
 
-fetchMongoDBData = BashOperator(task_id='DailyGrievanceDataFetch', bash_command='bash /opt/airflow/bashScripts/dumpMongoData.sh ', dag=dag )
+dagIA = DAG('GetIADataset', default_args = default_args, scehdule_interval = None)
+dagOfficials = DAG('GetOfficialsDataset', default_args = default_args, scehdule_interval = None)
 
-loadDataToBigQuery = PythonOperator(task_id='DailyLoadToBigQuery', 
-                                    python_callable=loadJsonToBigQuery, 
-                                    op_kwargs={ 'srcJsonPath': '/opt/airflow/data/dailyMongoDump/snapShot.json'}, dag=dag)
+dagMap = {'IA': dagIA, 'Officials': dagOfficials}
 
-
-
-
-
-
-fetchMongoDBData >> loadDataToBigQuery
-
-
+tablesToUpdate = {'IA': Variable.get('IADatasetTables'), 'Officials': Variable.get('OfficialsDatasetTables')}
+for eaDataSet, eaTableList in tablesToUpdate.items():
+    for eaTable in eaTableList:
+        eaDag = dagMap[eaDataSet]
+        fetchDataFromTable = PythonOperator( task_id = '_'.join(['fetchIATable', eaTable]), python_callable = fetchTablefromBq, op_kwargs={'datasetId': eaDataSet, 'tableId': eaTable, 'localDataPath' : '/opt/airflow/data/OtherDataSets'}, dag = eaDag)
+        loadDatatoGS = PythonOperator(task_id = '_'.join([ eaTable,'toGS']), python_callable = loadTableDatatoGS, op_kwargs = {'tableID' : eaTable, 'localDataPath' : '/opt/airflow/data/OtherDataSets'}, dag=eaDag)
+        fetchDataFromTable >> loadDatatoGS
