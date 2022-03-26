@@ -48,11 +48,11 @@ class CMSTransfer( DataTransfer ):
 
     def __init__(self, cobDate, tableId, **kwargs):
         super(CMSTransfer, self).__init__( cobDate, tableId )
-        assert self.checkInputs(kwargs), 'Please provide inputs relevant for CMS data'
+        #assert self.checkInputs(**kwargs), 'Please provide inputs relevant for CMS data'
         self.kwargs = kwargs
 
     def checkInputs(self, **kwargs):
-        pass
+        return True
 
     def fetchDataFromSource( self, taskName ):
         """To fetch CMS data from MongoDB or AWS Document DB"""
@@ -99,8 +99,8 @@ class CMSTransfer( DataTransfer ):
 
 class RSTTransfer(CMSTransfer):
     def __init__(self, cobDate, tableId, **kwargs):
-        super(CMSTransfer, self).__init__( cobDate )
-        assert self.checkInputs(kwargs), 'Please provide inputs relevant for CMS data'
+        super(RSTTransfer, self).__init__( cobDate, tableId )
+        #assert self.checkInputs(**kwargs), 'Please provide inputs relevant for CMS data'
         self.kwargs = kwargs
 
     def loadJsonToBigquery(self, srcJsonPath ):
@@ -145,8 +145,8 @@ class RSTTransfer(CMSTransfer):
 
 class CallerTransfer( DataTransfer ):
     def __init__(self, cobDate, tableId, **kwargs):
-        super(CallerTransfer, self).__init__( cobDate )
-        assert self.checkInputs(kwargs), 'Please provide inputs relevant for CMS data'
+        super(CallerTransfer, self).__init__( cobDate, tableId )
+        #assert self.checkInputs(**kwargs), 'Please provide inputs relevant for CMS data'
         self.kwargs = kwargs
 
     def fetchDataFromCSV(self, srcCSVPath):
@@ -168,7 +168,7 @@ class CallerTransfer( DataTransfer ):
 class AssigneeTransfer( CallerTransfer ):
     def __init__(self, cobDate, tableId, **kwargs):
         super(AssigneeTransfer, self).__init__( cobDate, tableId )
-        assert self.checkInputs(kwargs), 'Please provide inputs relevant for CMS data'
+        #assert self.checkInputs(**kwargs), 'Please provide inputs relevant for CMS data'
         self.kwargs = kwargs    
 
     def fetchDataFromSource( self, taskName ):
@@ -186,19 +186,19 @@ class AssigneeTransfer( CallerTransfer ):
 class CallStatusTransfer(AssigneeTransfer):
     def __init__(self, cobDate, tableId, **kwargs):
         super(AssigneeTransfer, self).__init__( cobDate, tableId )
-        assert self.checkInputs(kwargs), 'Please provide inputs relevant for CMS data'
+        #assert self.checkInputs(**kwargs), 'Please provide inputs relevant for CMS data'
         self.kwargs = kwargs
 
 class OfficialsTransfer(AssigneeTransfer):
     def __init__(self, cobDate, tableId, **kwargs):
         super(AssigneeTransfer, self).__init__( cobDate, tableId )
-        assert self.checkInputs(kwargs), 'Please provide inputs relevant for CMS data'
+        #assert self.checkInputs(**kwargs), 'Please provide inputs relevant for CMS data'
         self.kwargs = kwargs
 
 class StatusTransfer(AssigneeTransfer):
     def __init__(self, cobDate, tableId, **kwargs):
         super(AssigneeTransfer, self).__init__( cobDate, tableId )
-        assert self.checkInputs(kwargs), 'Please provide inputs relevant for CMS data'
+        #assert self.checkInputs(**kwargs), 'Please provide inputs relevant for CMS data'
         self.kwargs = kwargs
 
 def fetchTablefromBq(*args, **kwargs):

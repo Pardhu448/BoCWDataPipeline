@@ -3,3 +3,5 @@ pymongo
 python-dotenv
 pytest
 google-cloud-bigquery
+gspread
+pytz
