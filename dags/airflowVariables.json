@@ -1,0 +1,6 @@
+{
+    "BoCWCentralStorageTables": "CMS;RST;Caller;Assignee;CallStatus;Districts;GrievanceStatus",
+    "IADatasetTables": "CMSFiltered;RSTFiltered;CallerFiltered", 
+    "OfficialsDatasetTables": "Districts;GrievanceStatus"
+
+    }

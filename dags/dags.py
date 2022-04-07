@@ -1,55 +1,45 @@
 from airflow.models import Variable
 from airflow import DAG
-from airflow.operators.bash_operator import BashOperator
+
 from airflow.operators.python import PythonOperator
 from settings import default_args
 
-from dotenv import load_dotenv
-from os.path import join, dirname
 from datetime import datetime
+from os.path import join, dirname
 
-from dataTransfers import DataTransfer, CMSTransfer, RSTTransfer, CallerTransfer, AssigneeTransfer, CallStatusTransfer, OfficialsTransfer, StatusTransfer
+from dataTransfers import DataTransfer, CMSTransfer, RSTTransfer, CallerTransfer, AssigneeTransfer, CallStatusTransfer, DistrictsTransfer, GrievanceStatusTransfer, BoCWDataView
 from constants import dataTransferConfig
-
-from dataTransfers import fetchTablefromBq, loadTableDatatoGS
-
-dotenv_path = join(dirname(__file__), '.env')
-load_dotenv(dotenv_path)
 
 tablesToUpdate = Variable.get('BoCWCentralStorageTables').split(';')
 #{'BoCWCentralStorageTables': 'CMS;RST;Caller;Assignee;CallStatus;Officials;Status'}
 
-dataTransferConfigMap = {'CMS' : dataTransferConfig(CMSTransfer, {'mongoDumpPath': 'cmsSnapShot.json', 'taskName': 'CMSDatafromMongo'}),
-                         'RST': dataTransferConfig(RSTTransfer, {'mongoDumpPath': 'rstSnapShot.json', 'taskName': 'RSTDatafromMongo'}),
-                         'Caller' : dataTransferConfig(CallerTransfer, {'csvDumpPath': 'exotelCallerSnapShot.csv', 
-                                                                        'taskName': 'CallerDataFromExotel',
-                                                                        'gsUrl': '',
-                                                                        'sheetName': 'Callers'}),
-                         'Assignee': dataTransferConfig(AssigneeTransfer, {'csvDumpPath': 'assigneeSnapShot.csv', 
-                                                                           'taskName': 'AssigneeDataFromGS',
-                                                                           'gsUrl': '', 
-                                                                           'sheetName': 'Assignee'}),
-                         'CallStatus': dataTransferConfig(CallStatusTransfer, {'csvDumpPath': 'callSatusSnapShot.csv', 
-                                                                               'taskName': 'CallStatusDataFromGS',
-                                                                               'gsUrl': '',
-                                                                               'sheetName': 'CallStatus'}),
-                         'Officials' : dataTransferConfig(OfficialsTransfer, {'csvDumpPath': 'officialsSnapShot.csv', 
-                                                                              'taskName': 'OfficialsDataFromGS', 
-                                                                              'gsUrl': '',
-                                                                              'sheetName': 'Officials'}),
-                         'GrievanceStatus': dataTransferConfig(StatusTransfer, {'csvDumpPath': 'grievanceStatusSnapShot.csv', 
-                                                                       'taskName': 'GrievanceStatusDataFromGS',
-                                                                       'gsUrl': '',
-                                                                       'sheetName': 'GrievanceStatus'}) }
-
+dataTransferConfigMap = {'CMS' : dataTransferConfig(CMSTransfer, {'taskName': 'CMSfromMongo'}),
+                         'RST': dataTransferConfig(RSTTransfer, {'taskName': 'RSTfromMongo'}),
+                         'Caller' : dataTransferConfig(CallerTransfer, {'taskName': 'CallerFromExotel'}),
+                         'Assignee': dataTransferConfig(AssigneeTransfer, {'taskName': 'AssigneeFromGS',
+                                                                           'gsUrl': 'https://docs.google.com/spreadsheets/d/1rNYmGNF2dCXlPreQcu_A5-BWIO5j6MEGXHxTKVw-r1g/edit?usp=sharing', 
+                                                                           'sheetName': ['Assignee']}),
+                         'CallStatus': dataTransferConfig(CallStatusTransfer, {'taskName': 'CallStatusFromGS',
+                                                                               'gsUrl': 'https://docs.google.com/spreadsheets/d/1twcFeCkNbGy_E4xw_LTlnBl-jVEwVX4k5LjAatqH3Jk/edit#gid=0',
+                                                                               'sheetName': ['CallStatus']}),
+                         'Districts' : dataTransferConfig(DistrictsTransfer, {'taskName': 'DistrictsFromGS',
+                                                                              'sheetName': ['north', 'east', 'west', 'south', 'north-east', 'north-west', 'south-west', 'central', 'newdelhi'], 
+                                                                              'gsUrl': 'https://docs.google.com/spreadsheets/d/1ks1Ayf3ZmZqaLtQjp0N2jvF0fv3hcrPnQS-QZl27-JA/edit#gid=1278667506'}),
+                         'GrievanceStatus': dataTransferConfig(GrievanceStatusTransfer, {'taskName': 'GrievanceStatusFromGS',
+                                                                       'gsUrl': 'https://docs.google.com/spreadsheets/d/1G24JHFEYbxiq518nHgjwKuplH4OQDAA-r6LkAy91W1c/edit#gid=1278667506',
+                                                                       'sheetName': ['GrievanceStatus']})
+                        }
+                         
 cobDate = datetime.utcnow().date()
+dotenvPathCentralStorage = join(dirname(__file__), '.envCentralStorage')
+dotenvPathBoCWProject = join(dirname(__file__), '.envBoCWProject')
 
 with DAG('BoCWDailyDataUpdate', default_args=default_args, schedule_interval=None) as dag:
-# DAG for the daily update of data from App and Google Sheets into BigQuery Central Storage        
+# DAG for the daily update of data from App and Google Sheets into BigQuery Central Storage
     for eaTable in tablesToUpdate:
         inputArgs = dataTransferConfigMap[eaTable].inputArgs
         taskTag = inputArgs['taskName']
-        dataTransferHandle = dataTransferConfigMap[eaTable].className(cobDate, eaTable, **inputArgs)
+        dataTransferHandle = dataTransferConfigMap[eaTable].className(cobDate, dotenvPathCentralStorage, eaTable, **inputArgs)
         fetchDataFromSource = dataTransferHandle.fetchDataFromSource('_'.join(['Fetch', taskTag]))
         loadDataToBigquery = dataTransferHandle.loadDataToBigquery('_'.join(['Load', taskTag]))
         fetchDataFromSource >> loadDataToBigquery
@@ -72,7 +62,12 @@ for eaDataSet, eaTableList in tablesToUpdate.items():
     for eaTable in eaTableList.split(';'):
         eaDag = dagMap[eaDataSet]
         snapShotName = 'Districts_SnapSot.xlsx'  if eaTable == 'Districts' else '_'.join([eaTable, 'SnapShot.csv'])
-        eaOpKwargs={'datasetId': eaDataSet, 'tableId': eaTable, 'localDataPath' : snapShotName}
-        fetchDataFromTable = PythonOperator( task_id = '_'.join(['fetch', eaDataSet, eaTable]), python_callable = fetchTablefromBq, op_kwargs=eaOpKwargs, dag = eaDag)
-        loadDatatoGS = PythonOperator(task_id = '_'.join([ eaDataSet, eaTable,'toGS']), python_callable = loadTableDatatoGS, op_kwargs = eaOpKwargs, dag=eaDag)
-        fetchDataFromTable >> loadDatatoGS
+        eaInputArgs = {'datasetId': eaDataSet, 'localDataPath' : snapShotName}
+        dataViewHandle = BoCWDataView(cobDate, dotenvPathBoCWProject, eaTable, **eaInputArgs)
+        createTableInBq = dataViewHandle.createTableInBq()
+        fetchTableFromBq = dataViewHandle.fetchTableFromBq()
+        loadDatatoGS = dataViewHandle.loadTabletoGS()
+
+        #fetchDataFromTable = PythonOperator( task_id = '_'.join(['fetch', eaDataSet, eaTable]), python_callable = fetchTablefromBq, op_kwargs=eaOpKwargs, dag = eaDag)
+        #loadDatatoGS = PythonOperator(task_id = '_'.join([ eaDataSet, eaTable,'toGS']), python_callable = loadTableDatatoGS, op_kwargs = eaOpKwargs, dag=eaDag)
+        createTableInBq >> fetchTableFromBq >> loadDatatoGS
