@@ -17,7 +17,7 @@ dataTransferConfigMap = {'CMS' : dataTransferConfig(CMSTransfer, {'taskName': 'C
                          'RST': dataTransferConfig(RSTTransfer, {'taskName': 'RSTfromMongo'}),
                          'Caller' : dataTransferConfig(CallerTransfer, {'taskName': 'CallerFromExotel'}),
                          'Assignee': dataTransferConfig(AssigneeTransfer, {'taskName': 'AssigneeFromGS',
-                                                                           'gsUrl': 'https://docs.google.com/spreadsheets/d/1rNYmGNF2dCXlPreQcu_A5-BWIO5j6MEGXHxTKVw-r1g/edit?usp=sharing', 
+                                                                           'gsUrl': 'https://docs.google.com/spreadsheets/d/1rNYmGNF2dCXlPreQcu_A5-BWIO5j6MEGXHxTKVw-r1g/edit#gid=0', 
                                                                            'sheetName': ['Assignee']}),
                          'CallStatus': dataTransferConfig(CallStatusTransfer, {'taskName': 'CallStatusFromGS',
                                                                                'gsUrl': 'https://docs.google.com/spreadsheets/d/1twcFeCkNbGy_E4xw_LTlnBl-jVEwVX4k5LjAatqH3Jk/edit#gid=0',
@@ -27,7 +27,7 @@ dataTransferConfigMap = {'CMS' : dataTransferConfig(CMSTransfer, {'taskName': 'C
                                                                               'gsUrl': 'https://docs.google.com/spreadsheets/d/1ks1Ayf3ZmZqaLtQjp0N2jvF0fv3hcrPnQS-QZl27-JA/edit#gid=1278667506'}),
                          'GrievanceStatus': dataTransferConfig(GrievanceStatusTransfer, {'taskName': 'GrievanceStatusFromGS',
                                                                        'gsUrl': 'https://docs.google.com/spreadsheets/d/1G24JHFEYbxiq518nHgjwKuplH4OQDAA-r6LkAy91W1c/edit#gid=1278667506',
-                                                                       'sheetName': ['GrievanceStatus']})
+                                                                       'sheetName': ['north', 'east', 'west', 'south', 'north-east', 'north-west', 'south-west', 'central', 'newdelhi']})
                         }
                          
 cobDate = datetime.utcnow().date()
