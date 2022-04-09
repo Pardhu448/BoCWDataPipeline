@@ -8,7 +8,7 @@ from airflow.operators.python import PythonOperator
 
 import gspread
 
-from constants import BaseDailyDumpPath
+from constants import BaseDailyDumpPath, BqCentralStorageDataSet
 from dataFormatting import parseJsonFile
 from dotenv import load_dotenv
 import os 
@@ -22,6 +22,11 @@ class DataTransfer:
 
     def loadEnv(self, envPath):
         load_dotenv(envPath)
+
+    def fetchRefinedTableID(self):
+        storageProject = os.environ.get("BqStorageProject")
+        dataSet = BqCentralStorageDataSet
+        return '.'.join([storageProject, dataSet, self.tableId])
 
     def fetchDataDumpFileName(self, taskName, fileType='.csv', sheetName=None):
         fileName = sheetName + '_' + taskName.split('_')[1] + 'SnapShot' + fileType if sheetName else taskName.split('_')[1] + 'SnapShot' + fileType
@@ -40,7 +45,7 @@ class DataTransfer:
         # Construct a BigQuery client object
         client = bigquery.Client()
         srcDFrame = pandas.read_csv(srcCSVPath)
-        tableId = self.tableId
+        tableId = self.fetchRefinedTableID()
 
         job_config = bigquery.LoadJobConfig()
         
@@ -66,7 +71,7 @@ class DataTransfer:
         
         # Construct a BigQuery client object
         client = bigquery.Client()
-        tableId = self.tableId
+        tableId = self.fetchRefinedTableID()
         srcDFrame = pandas.concat([pandas.read_csv(eaCSV) for eaCSV in srcCSVPaths ])
         job_config = bigquery.LoadJobConfig()
         
@@ -87,7 +92,7 @@ class DataTransfer:
             workSheet = gc.open_by_url(gsUrl).worksheet(eaSheet)
             dFrame = pandas.DataFrame(workSheet.get_all_records())
             srcCSVPath = self.fetchDataDumpFileName(taskName, sheetName=eaSheet)
-            dFrame.to_csv(srcCSVPath)
+            dFrame.to_csv(srcCSVPath, index=False)
         return True
 
 class CMSTransfer( DataTransfer ):
@@ -196,6 +201,8 @@ class RSTTransfer(CMSTransfer):
         return PythonOperator(task_id=taskName, python_callable = self.loadJsonToBigquery, op_kwargs={ 'taskName': taskName })
 
 class CallerTransfer( DataTransfer ):
+    #Data Formatting Notes:
+    #column names cannot be fancy for BigQuery- no spaces, specialCharacters
     def __init__(self, cobDate, envPath, tableId, **kwargs):
         super(CallerTransfer, self).__init__( cobDate, envPath, tableId )
         #assert self.checkInputs(**kwargs), 'Please provide inputs relevant for CMS data'
@@ -229,7 +236,7 @@ class AssigneeTransfer( CallerTransfer ):
     def loadDataToBigquery(self, taskName):
         """To load Caller data to Bigquery"""
         self.loadEnv( self.envPath )
-        srcCSVPath = self.fetchDataDumpFileName(taskName, self.kwargs['sheetName'][0])
+        srcCSVPath = self.fetchDataDumpFileName(taskName, sheetName=self.kwargs['sheetName'][0])
         return PythonOperator(task_id=taskName, python_callable = self.loadCSVToBigquery, op_kwargs = { 'srcCSVPath' : srcCSVPath} )
 
     def fetchDataFromSource( self, taskName ):
