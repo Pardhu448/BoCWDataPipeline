@@ -8,7 +8,8 @@ from datetime import datetime
 from os.path import join, dirname
 
 from dataTransfers import DataTransfer, CMSTransfer, RSTTransfer, CallerTransfer, AssigneeTransfer, CallStatusTransfer, DistrictsTransfer, GrievanceStatusTransfer, BoCWDataView
-from constants import dataTransferConfig
+from constants import dataTransferConfig, BqIAAssociatesViewDataSet, BqOfficialsViewDataSet
+from dataSchema import districtsSchema, grievanceStatusSchema
 
 tablesToUpdate = Variable.get('BoCWCentralStorageTables').split(';')
 #{'BoCWCentralStorageTables': 'CMS;RST;Caller;Assignee;CallStatus;Officials;Status'}
@@ -23,9 +24,11 @@ dataTransferConfigMap = {'CMS' : dataTransferConfig(CMSTransfer, {'taskName': 'C
                                                                                'gsUrl': 'https://docs.google.com/spreadsheets/d/1twcFeCkNbGy_E4xw_LTlnBl-jVEwVX4k5LjAatqH3Jk/edit#gid=0',
                                                                                'sheetName': ['CallStatus']}),
                          'Districts' : dataTransferConfig(DistrictsTransfer, {'taskName': 'DistrictsFromGS',
+                                                                                'schema': districtsSchema,
                                                                               'sheetName': ['north', 'east', 'west', 'south', 'north-east', 'north-west', 'south-west', 'central', 'newdelhi'], 
                                                                               'gsUrl': 'https://docs.google.com/spreadsheets/d/1ks1Ayf3ZmZqaLtQjp0N2jvF0fv3hcrPnQS-QZl27-JA/edit#gid=1278667506'}),
                          'GrievanceStatus': dataTransferConfig(GrievanceStatusTransfer, {'taskName': 'GrievanceStatusFromGS',
+                                                                                        'schema': grievanceStatusSchema,
                                                                        'gsUrl': 'https://docs.google.com/spreadsheets/d/1G24JHFEYbxiq518nHgjwKuplH4OQDAA-r6LkAy91W1c/edit#gid=1278667506',
                                                                        'sheetName': ['north', 'east', 'west', 'south', 'north-east', 'north-west', 'south-west', 'central', 'newdelhi']})
                         }
@@ -39,7 +42,7 @@ with DAG('BoCWDailyDataUpdate', default_args=default_args, schedule_interval=Non
     for eaTable in tablesToUpdate:
         inputArgs = dataTransferConfigMap[eaTable].inputArgs
         taskTag = inputArgs['taskName']
-        dataTransferHandle = dataTransferConfigMap[eaTable].className(cobDate, dotenvPathCentralStorage, eaTable, **inputArgs)
+        dataTransferHandle = dataTransferConfigMap[eaTable].className(cobDate, dotenvPathCentralStorage, tableId=eaTable, **inputArgs)
         fetchDataFromSource = dataTransferHandle.fetchDataFromSource('_'.join(['Fetch', taskTag]))
         loadDataToBigquery = dataTransferHandle.loadDataToBigquery('_'.join(['Load', taskTag]))
         fetchDataFromSource >> loadDataToBigquery
@@ -47,27 +50,17 @@ with DAG('BoCWDailyDataUpdate', default_args=default_args, schedule_interval=Non
 # Dags to provide views based on the filtering criteria of IA associsates or Officials
 # Once the filtering criteria is configured, filtered data is made available by updating 
 # data into Google Sheets. The updation interval depends on the date range of filtering criteria
-# and could be either Monthly or Qurterly
+# and could be either daily or Monthly or Qurterly
 
-dagIA = DAG('GetIADataset', default_args = default_args, schedule_interval = None)
-dagOfficials = DAG('GetOfficialsDataset', default_args = default_args, schedule_interval = None)
+# Fetch all configs defined for data view tasks in configurations file
+from dataViewConfig import DagConfigMap
 
-dagMap = {'IAAssocisates': dagIA, 'GovtOfficials': dagOfficials}
+for _, eaDagConfig in DagConfigMap().items():
+    dagID = eaDagConfig['TaskName']
+    eaDag = DAG(dagID, default_args=default_args, schedule_interval=eaDagConfig.getSchedule())
+    dataViewHandle = BoCWDataView(cobDate, dotenvPathBoCWProject, eaDag)
+    createTableInBq = dataViewHandle.createTableViewInBq('CreateTableView')
+    fetchTableFromBq = dataViewHandle.fetchTableFromBq('FetchTableFromBq')
+    loadDatatoGS = dataViewHandle.loadTabletoGS('LoadDataInGS')
 
-tablesToUpdate = {'IAAssocisates': Variable.get('IADatasetTables'), 'GovtOfficials': Variable.get('OfficialsDatasetTables')}
-#{'IADatasetTables': 'CMSFiltered;RSTFiltered;CallerFiltered;AssigneeFiltered;CallStatusFiltered'}
-#{'OfficialsDatasetTables': 'Districts;GrievanceStatus'}
-
-for eaDataSet, eaTableList in tablesToUpdate.items():
-    for eaTable in eaTableList.split(';'):
-        eaDag = dagMap[eaDataSet]
-        snapShotName = 'Districts_SnapSot.xlsx'  if eaTable == 'Districts' else '_'.join([eaTable, 'SnapShot.csv'])
-        eaInputArgs = {'datasetId': eaDataSet, 'localDataPath' : snapShotName}
-        dataViewHandle = BoCWDataView(cobDate, dotenvPathBoCWProject, eaTable, **eaInputArgs)
-        createTableInBq = dataViewHandle.createTableInBq()
-        fetchTableFromBq = dataViewHandle.fetchTableFromBq()
-        loadDatatoGS = dataViewHandle.loadTabletoGS()
-
-        #fetchDataFromTable = PythonOperator( task_id = '_'.join(['fetch', eaDataSet, eaTable]), python_callable = fetchTablefromBq, op_kwargs=eaOpKwargs, dag = eaDag)
-        #loadDatatoGS = PythonOperator(task_id = '_'.join([ eaDataSet, eaTable,'toGS']), python_callable = loadTableDatatoGS, op_kwargs = eaOpKwargs, dag=eaDag)
-        createTableInBq >> fetchTableFromBq >> loadDatatoGS
+    createTableInBq >> fetchTableFromBq >> loadDatatoGS

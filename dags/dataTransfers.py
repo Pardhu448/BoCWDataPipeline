@@ -8,16 +8,18 @@ from airflow.operators.python import PythonOperator
 
 import gspread
 
-from constants import BaseDailyDumpPath, BqCentralStorageDataSet
+from constants import BaseDailyDumpPath, BqCentralStorageDataSet, BqProjectLocation
 from dataFormatting import parseJsonFile
 from dotenv import load_dotenv
 import os 
+import numpy 
+
+from sql.bqSqlQueries import queryDateFilteredData
 
 class DataTransfer:    
 
-    def __init__( self, cobDate, envPath, tableId ):
+    def __init__( self, cobDate, envPath ):
         self.cobDate = cobDate
-        self.tableId = tableId 
         self.envPath = envPath 
 
     def loadEnv(self, envPath):
@@ -29,7 +31,7 @@ class DataTransfer:
         return '.'.join([storageProject, dataSet, self.tableId])
 
     def fetchDataDumpFileName(self, taskName, fileType='.csv', sheetName=None):
-        fileName = sheetName + '_' + taskName.split('_')[1] + 'SnapShot' + fileType if sheetName else taskName.split('_')[1] + 'SnapShot' + fileType
+        fileName = taskName.split('_')[1] + 'SnapShot' + fileType if sheetName else taskName.split('_')[1] + 'SnapShot' + fileType
         return '/'.join([BaseDailyDumpPath, fileName])
 
     def loadCSVToBigquery(self, srcCSVPath):
@@ -59,7 +61,7 @@ class DataTransfer:
         #     )
         # )
 
-    def loadDataFrameToBigquery(self, srcCSVPaths ):
+    def loadDataFrameToBigquery(self, srcCSVPaths, schema=None ):
         """To load dataframe data to Bigquery"""
         # DesignPointToNote: we are appending data daily and this might 
         # cause redundant data if there are no daily changes.
@@ -73,7 +75,8 @@ class DataTransfer:
         client = bigquery.Client()
         tableId = self.fetchRefinedTableID()
         srcDFrame = pandas.concat([pandas.read_csv(eaCSV) for eaCSV in srcCSVPaths ])
-        job_config = bigquery.LoadJobConfig()
+        srcDFrame = srcDFrame.astype(dtype=str)
+        job_config = bigquery.LoadJobConfig(schema=schema)
         
         job = client.load_table_from_dataframe(srcDFrame, tableId, job_config=job_config)  # Make an API request.
         job.result()  # Wait for the job to complete.
@@ -95,11 +98,17 @@ class DataTransfer:
             dFrame.to_csv(srcCSVPath, index=False)
         return True
 
+    def fetchDataTableFromBq(self, bqClient, tableID):
+        """ To fetch data from big query ad save it in dump file"""
+        
+        return True
+
 class CMSTransfer( DataTransfer ):
 
-    def __init__(self, cobDate, envPath, tableId, **kwargs):
-        super(CMSTransfer, self).__init__( cobDate, envPath, tableId )
+    def __init__(self, cobDate, envPath, **kwargs):
+        super(CMSTransfer, self).__init__( cobDate, envPath )
         #assert self.checkInputs(**kwargs), 'Please provide inputs relevant for CMS data'
+        self.tableId = kwargs['tableId']
         self.kwargs = kwargs
 
     def checkInputs(self, **kwargs):
@@ -152,9 +161,10 @@ class CMSTransfer( DataTransfer ):
         return PythonOperator(task_id=taskName, python_callable = self.loadJsonToBigquery, op_kwargs={ 'taskName': taskName})    
 
 class RSTTransfer(CMSTransfer):
-    def __init__(self, cobDate, envPath, tableId, **kwargs):
-        super(RSTTransfer, self).__init__( cobDate, envPath, tableId )
+    def __init__(self, cobDate, envPath, **kwargs):
+        super(RSTTransfer, self).__init__( cobDate, envPath )
         #assert self.checkInputs(**kwargs), 'Please provide inputs relevant for CMS data'
+        self.tableId = kwargs['tableId'] 
         self.kwargs = kwargs
 
     def loadJsonToBigquery(self, taskName ):
@@ -203,9 +213,10 @@ class RSTTransfer(CMSTransfer):
 class CallerTransfer( DataTransfer ):
     #Data Formatting Notes:
     #column names cannot be fancy for BigQuery- no spaces, specialCharacters
-    def __init__(self, cobDate, envPath, tableId, **kwargs):
-        super(CallerTransfer, self).__init__( cobDate, envPath, tableId )
+    def __init__(self, cobDate, envPath, **kwargs):
+        super(CallerTransfer, self).__init__( cobDate, envPath )
         #assert self.checkInputs(**kwargs), 'Please provide inputs relevant for CMS data'
+        self.tableId = kwargs['tableId']
         self.kwargs = kwargs
 
     def fetchDataFromCSV(self, srcCSVPath):
@@ -228,9 +239,10 @@ class CallerTransfer( DataTransfer ):
         return PythonOperator(task_id=taskName, python_callable = self.loadCSVToBigquery, op_kwargs = { 'srcCSVPath' : srcCSVPath} )
 
 class AssigneeTransfer( CallerTransfer ):
-    def __init__(self, cobDate, envPath, tableId, **kwargs):
-        super(AssigneeTransfer, self).__init__( cobDate, envPath, tableId )
+    def __init__(self, cobDate, envPath, **kwargs):
+        super(AssigneeTransfer, self).__init__( cobDate, envPath )
         #assert self.checkInputs(**kwargs), 'Please provide inputs relevant for CMS data'
+        self.tableId = kwargs['tableId']
         self.kwargs = kwargs    
 
     def loadDataToBigquery(self, taskName):
@@ -246,16 +258,22 @@ class AssigneeTransfer( CallerTransfer ):
         return PythonOperator(task_id=taskName, python_callable = self.fetchDataFromGS, op_kwargs = opKwargs )
 
 class CallStatusTransfer(AssigneeTransfer):
-    def __init__(self, cobDate, envPath, tableId, **kwargs):
-        super(AssigneeTransfer, self).__init__( cobDate, envPath, tableId )
+    def __init__(self, cobDate, envPath, **kwargs):
+        super(AssigneeTransfer, self).__init__( cobDate, envPath )
         #assert self.checkInputs(**kwargs), 'Please provide inputs relevant for CMS data'
+        self.tableId = kwargs['tableId']
         self.kwargs = kwargs
 
 class DistrictsTransfer(AssigneeTransfer):
-    def __init__(self, cobDate, envPath, tableId, **kwargs):
-        super(DistrictsTransfer, self).__init__( cobDate, envPath, tableId )
+    def __init__(self, cobDate, envPath, **kwargs):
+        super(DistrictsTransfer, self).__init__( cobDate, envPath )
         #assert self.checkInputs(**kwargs), 'Please provide inputs relevant for CMS data'
+        self.tableId = kwargs['tableId']
         self.kwargs = kwargs
+
+    def fetchDataDumpFileName(self, taskName, fileType='.csv', sheetName=None):
+        fileName = sheetName + '_' + taskName.split('_')[1] + 'SnapShot' + fileType if sheetName else taskName.split('_')[1] + 'SnapShot' + fileType
+        return '/'.join([BaseDailyDumpPath, fileName])
 
     def fetchDataFromSource( self, taskName ):
         """To fetch district data from each sheet of google workbook """
@@ -267,21 +285,23 @@ class DistrictsTransfer(AssigneeTransfer):
         """To load District data to Bigquery"""
         self.loadEnv( self.envPath )
         srcCSVPaths = [self.fetchDataDumpFileName(taskName, sheetName=eaSheet) for eaSheet in self.kwargs['sheetName']]
-        return PythonOperator(task_id=taskName, python_callable = self.loadDataFrameToBigquery, op_kwargs = { 'srcCSVPaths' : srcCSVPaths} )
+        dataSchema = self.kwargs['schema']
+        return PythonOperator(task_id=taskName, python_callable = self.loadDataFrameToBigquery, op_kwargs = { 'srcCSVPaths' : srcCSVPaths, 'schema': dataSchema} )
 
 class GrievanceStatusTransfer(DistrictsTransfer):
-    def __init__(self, cobDate, envPath, tableId, **kwargs):
-        super(GrievanceStatusTransfer, self).__init__( cobDate, envPath, tableId )
+    def __init__(self, cobDate, envPath, **kwargs):
+        super(GrievanceStatusTransfer, self).__init__( cobDate, envPath )
         #assert self.checkInputs(**kwargs), 'Please provide inputs relevant for CMS data'
+        self.tableId = kwargs['tableId']
         self.kwargs = kwargs
 
 class BoCWDataView(DataTransfer):
 
-    def __init__(self, cobDate, envPath, tableId, **kwargs):
-        super(BoCWDataView, self).__init__( cobDate, envPath, tableId )
+    def __init__(self, cobDate, envPath, dagConfig, **kwargs):
+        super(BoCWDataView, self).__init__( cobDate, envPath )
         #assert self.checkInputs(**kwargs), 'Please provide inputs relevant for CMS data'
+        self.dagInfo = dagConfig
         self.kwargs = kwargs
-        #self.loadEnv( envPath )
 
     def checkInputs(self, **kwargs):
         return True
@@ -289,9 +309,30 @@ class BoCWDataView(DataTransfer):
     def loadEnv(self, envPath):
         load_dotenv(envPath)
 
-    def createTableInBq(self, *args, **kwargs):
+    def loadViewInBq(self):
+        client = bigquery.Client()
+        
+        #Create seperate dataset where we need to store table view
+        viewDataSetID = self.dagInfo['DataViewConfig']['destDataSet']
+        viewDataSet = bigquery.Dataset(viewDataSetID)
+        viewDataSet.location = BqProjectLocation
+        viewData = client.create_dataset(viewDataSet)  # API request
+
+        viewTableId = self.dagInfo['DataViewConfig']['viewTableName']
+        viewTable = bigquery.Table(viewData.table(viewTableId))
+
+        #Source data info
+        srcDataTableId = self.dagInfo['DataViewConfig']['sourceDataTable']
+        
+        #Create table with required view
+        dateRange = self.dagInfo['DataViewConfig']['dateRange']
+        columnFilter = self.dagInfo['DataViewConfig']['columnsRequired']
+        viewTable.view_query = queryDateFilteredData(srcDataTableId, columnFilter, dateRange )
+        view = client.create_table(viewTable)  # API request
+
+    def createTableViewInBq(self, taskName, **kwargs):
         """To run data processing queries in BQ to create required views from Central Storage Datasets"""
-        return True
+        return PythonOperator(task_id=taskName, python_callable = self.loadViewInBq )
 
     def fetchTableFromBq(self, *args, **kwargs):
         return True
