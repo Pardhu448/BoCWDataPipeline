@@ -29,11 +29,12 @@ class dailyCMSAppData(BoCWDataViewConfigs):
         
         ViewProject = os.environ.get('BqCurrentProject')
         DestDataSet = fetchRefinedDataSetID(ViewProject, 'IAAssociates')
-        
-        ColsRequired = ['Date','Name', 'Contact_number', 'Profile', 'Sex','District','Area','Labor_card','Labor_card_number','Registration_date','Renewal_Date',	'People_in_need', 'Type_of_grievance','Details_grievance']
+        #Columns required for data datafiltering
+        ColsRequired = ['data.persistent_data_district', 'data.identification_assigneeName', 'document_name', 'mobile', 'operation', 'state', 'created_at']
         
         viewTableName = 'CMSFiltered'
-        return dataViewConfig(self.configName, SrcDataTable, DestDataSet, viewTableName, ColsRequired, 'PreviousDay', 1000)  
+        gsWorksheet = 'https://docs.google.com/spreadsheets/d/1t9Wg-w72v-daCdliPuayg8BWPh7G-l-aK6oJEnhAq4M/edit#gid=0'
+        return dataViewConfig(self.configName, SrcDataTable, DestDataSet, viewTableName, gsWorksheet, ColsRequired, 'PreviousDay', 1000)  
 
 class dailyExotelAppData(BoCWDataViewConfigs):
     ###Caller data from Exotel
@@ -48,7 +49,8 @@ class dailyExotelAppData(BoCWDataViewConfigs):
         ColsRequired = ['UniqueID_Exotel','PhoneNumber_Beneficiary','DateTime','Count']
         
         viewTableName = 'CallerFiltered'
-        return dataViewConfig(self.configName, SrcDataTable, DestDataSet, viewTableName, ColsRequired, 'PreviousDay', 1000)
+        gsWorksheet = 'https://docs.google.com/spreadsheets/d/1NHipt4yGW8yVMyeBiJpyTFzDtpA7bs4SWfaf4-uvPgk/edit#gid=0'
+        return dataViewConfig(self.configName, SrcDataTable, DestDataSet, viewTableName, gsWorksheet, ColsRequired, 'PreviousDay', 1000)
 
 class lastYearGrievanceMetrics(BoCWDataViewConfigs):
     ## Smaple Adhoc view of central sorage Table
@@ -60,16 +62,17 @@ class lastYearGrievanceMetrics(BoCWDataViewConfigs):
         ViewProject = os.environ.get('BqCurrentProject')
         DestDataSet = fetchRefinedDataSetID(ViewProject, 'IAAssociates')
 
-        ColsRequired = ['Date','Name', 'Contact_number', 'Profile', 'Sex','District','Area','Labor_card','Labor_card_number','Registration_date','Renewal_Date',	'People_in_need', 'Type_of_grievance','Details_grievance', 'Status', 'Date_resolved']
+        ColsRequired = ['data.persistent_data_district', 'data.identification_assigneeName', 'document_name', 'mobile', 'operation', 'state', 'created_at', 'Type_of_grievance','Details_grievance', 'Status', 'Date_resolved']
         
         viewTableName = 'LastYearGrievanceMetrics'
-        return dataViewConfig(self.configName, SrcDataTable, DestDataSet, viewTableName, ColsRequired, 'PreviousDay', 1000)
+        gsWorksheet = 'https://docs.google.com/spreadsheets/d/1nL83t7KKxRZexHe8bN5W3QoSvWIPmK9yHQkH3FPiNQA/edit#gid=0'
+        return dataViewConfig(self.configName, SrcDataTable, DestDataSet, viewTableName, gsWorksheet, ColsRequired, 'PreviousDay', 1000)
 
-def DagConfigMap(env=None):
+def DataViewDagConfigMap(env=None):
     """To load all data configs required for each dag associated with a particular data view to be made available through ariflow """
     #Please add config here for any new Data View Task
     return { 
-        'EOD_BeneficiaryData' : DagInfo('EOD_BeneficiaryData', 'Daily', dailyCMSAppData('EOD_BeneficiaryData')),
-        'EOD_CallerData': DagInfo('EOD_CallerData', 'Daily', dailyExotelAppData('EOD_CallerData')),
-        'ADHOC_LastYearGrievanceMetrics': DagInfo('ADHOC_LastYearGrievanceMetrics', 'Once', lastYearGrievanceMetrics('ADHOC_LastYearGrievanceMetrics'))
+        'EOD_BeneficiaryData' : DagInfo('EOD_BeneficiaryData', 'Once', dailyCMSAppData('EOD_BeneficiaryData').dataViewConfig()),
+        'EOD_CallerData': DagInfo('EOD_CallerData', 'Once', dailyExotelAppData('EOD_CallerData').dataViewConfig()),
+        'ADHOC_LastYearGrievanceMetrics': DagInfo('ADHOC_LastYearGrievanceMetrics', 'Once', lastYearGrievanceMetrics('ADHOC_LastYearGrievanceMetrics').dataViewConfig())
          }
