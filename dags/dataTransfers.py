@@ -13,9 +13,7 @@ from dataFormatting import parseJsonFile
 from dotenv import load_dotenv
 import os 
 import numpy 
-
-from sql.bqSqlQueries import queryDateFilteredData
-from utils import checkIfDatasetExistsInBq
+#from utils import checkIfDatasetExistsInBq
 
 class DataTransfer:    
 
@@ -99,13 +97,14 @@ class DataTransfer:
             dFrame.to_csv(srcCSVPath, index=False)
         return True
 
-    def loadDFrameToGS(self, srcDumpFile, gSheetLink, gSheetName):
+    def loadDFrameToGS(self, srcDumpFile, gSheetLink, sheetName):
         """To load data from local folder to bigQuery"""    
         gc = gspread.service_account(filename = os.environ.get('GOOGLE_APPLICATION_CREDENTIALS'))
-        workSheet = gc.open_by_url(gSheetLink).worksheet(gSheetName)    
+        print(os.environ.get('GOOGLE_APPLICATION_CREDENTIALS'))
+        workSheet = gc.open_by_url(gSheetLink).worksheet(sheetName)    
         dFrame= pandas.read_csv(srcDumpFile)
         values = dFrame.values.tolist()
-        workSheet.values_append(gSheetName, {'valueInputOption': 'USER_ENTERED'}, {'values': values})
+        workSheet.values_append(sheetName, {'valueInputOption': 'USER_ENTERED'}, {'values': values})
         return None
 
 class CMSTransfer( DataTransfer ):
@@ -353,14 +352,11 @@ class BoCWDataView(DataTransfer):
         """ To query data from big query and save it in dump file"""
         bqclient = bigquery.Client()
 
-        #To create a query 
-        srcDataTableId = self.dataViewConfig.sourceDataTable
-        dateRange = self.dataViewConfig.dateRange
-        columnFilter = self.dataViewConfig.columnsRequired
         viewTableId = self.dataViewConfig.viewTableName
 
-        cmsFilteredQuery = queryDateFilteredData(srcDataTableId, columnFilter, dateRange )
-        dataframe = bqclient.query(cmsFilteredQuery).to_dataframe()
+        viewQuery = self.dataViewConfig.dataViewQuery
+        
+        dataframe = bqclient.query(viewQuery).to_dataframe()
         dataDumpFileName = self.fetchDataDumpFileName( viewTableId, fileType='.csv', sheetName=self.dagName)
         dataframe.to_csv(dataDumpFileName, index=False)
         return True    
@@ -374,5 +370,6 @@ class BoCWDataView(DataTransfer):
         self.loadEnv( self.envPath )
         viewTableId = self.dataViewConfig.viewTableName
         srcDumpFileName = self.fetchDataDumpFileName( viewTableId, fileType='.csv', sheetName=self.dagName)
-        opKwargs = {'srcDumpFile': srcDumpFileName, 'sheetName': self.dagName, 'gSheetLink': self.dataViewConfig.gsWorksheet}
-        return PythonOperator(task_id=taskName, python_callable = self.loadDFrameToGS, op_kwargs= opKwargs, dag=self.dag )        
+        opKwargs = {'srcDumpFile': srcDumpFileName, 'sheetName': viewTableId, 'gSheetLink': self.dataViewConfig.gsWorksheet}
+        return PythonOperator(task_id=taskName, python_callable = self.loadDFrameToGS, op_kwargs= opKwargs, dag=self.dag )
+
