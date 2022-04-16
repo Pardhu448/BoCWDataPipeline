@@ -24,7 +24,7 @@ grievanceStatusDataFields = districtDataFields + ['Status', 'Date_resolved']
 # destDataSet : new data set name to be created for this view
 # viewTableName: table name to be used for  
 #gsWorksheet: google worksheet to populate view data
-dataViewConfig = namedtuple('dataViewConfig', 'viewName sourceDataTable destDataSet viewTableName gsWorksheet columnsRequired dateRange rowLimit')
+dataViewConfig = namedtuple('dataViewConfig', 'viewName sourceDataTable destDataSet viewTableName gsWorksheet columnsRequired dateRange dataViewQuery rowLimit')
 
 #named tuple to define information required for a dag
 # DagName: unique sensible name for the dag at hand(this goes as a dag ID in airflow)

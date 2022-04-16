@@ -27,10 +27,11 @@ dataTransferConfigMap = {'CMS' : dataTransferConfig(CMSTransfer, {'taskName': 'C
                          'Districts' : dataTransferConfig(DistrictsTransfer, {'taskName': 'DistrictsFromGS',
                                                                                 'schema': districtsSchema,
                                                                               'sheetName': ['north', 'east', 'west', 'south', 'north-east', 'north-west', 'south-west', 'central', 'newdelhi'], 
-                                                                              'gsUrl': 'https://docs.google.com/spreadsheets/d/1dmZOwFQIMVkY7aLjNTDRl5bfMjzIFPAojy05EvjEcWU/edit#gid=1278667506'}),
+                                                                              #'gsUrl': 'https://docs.google.com/spreadsheets/d/1dmZOwFQIMVkY7aLjNTDRl5bfMjzIFPAojy05EvjEcWU/edit#gid=1278667506'}),
+                                                                              'gsUrl': 'https://docs.google.com/spreadsheets/d/1ks1Ayf3ZmZqaLtQjp0N2jvF0fv3hcrPnQS-QZl27-JA/edit#gid=1278667506'}),
                          'GrievanceStatus': dataTransferConfig(GrievanceStatusTransfer, {'taskName': 'GrievanceStatusFromGS',
                                                                                         'schema': grievanceStatusSchema,
-                                                                       'gsUrl': 'https://docs.google.com/spreadsheets/d/1wUuu9NMmVfi5MwwVgysHrXa4ER4AyRx-Q2lkl3hyTr8/edit#gid=1278667506',
+                                                                       'gsUrl': 'https://docs.google.com/spreadsheets/d/1G24JHFEYbxiq518nHgjwKuplH4OQDAA-r6LkAy91W1c/edit#gid=1278667506',
                                                                        'sheetName': ['north', 'east', 'west', 'south', 'north-east', 'north-west', 'south-west', 'central', 'newdelhi']})
                         }
                          

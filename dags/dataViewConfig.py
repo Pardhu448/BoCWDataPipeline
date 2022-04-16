@@ -5,6 +5,7 @@ from collections import namedtuple
 from utils import fetchRefinedTableID, fetchRefinedDataSetID
 from constants import dataViewConfig, DagInfo
 import os 
+from sql.bqSqlQueries import queryCmsFilteredData, queryCallerFilteredData, querylastYearGrievanceData
 
 class BoCWDataViewConfigs:
     #All configurations required for different views on source data are stored here
@@ -22,6 +23,9 @@ class BoCWDataViewConfigs:
 class dailyCMSAppData(BoCWDataViewConfigs):
     ## To fetch daily data requied by IA associates
     ### Beneficiary data from CMS app
+    def __init__(self, configName, **kwargs):
+        self.configName = configName
+
     def dataViewConfig(self):
         
         StorageProject = os.environ.get('CentralStorageProject')
@@ -34,7 +38,10 @@ class dailyCMSAppData(BoCWDataViewConfigs):
         
         viewTableName = 'CMSFiltered'
         gsWorksheet = 'https://docs.google.com/spreadsheets/d/1t9Wg-w72v-daCdliPuayg8BWPh7G-l-aK6oJEnhAq4M/edit#gid=0'
-        return dataViewConfig(self.configName, SrcDataTable, DestDataSet, viewTableName, gsWorksheet, ColsRequired, 'PreviousDay', 1000)  
+
+        dataViewQuery = queryCmsFilteredData(SrcDataTable, ColsRequired, 'PreviousDay')
+
+        return dataViewConfig(self.configName, SrcDataTable, DestDataSet, viewTableName, gsWorksheet, ColsRequired, 'PreviousDay', dataViewQuery, 1000)
 
 class dailyExotelAppData(BoCWDataViewConfigs):
     ###Caller data from Exotel
@@ -50,7 +57,10 @@ class dailyExotelAppData(BoCWDataViewConfigs):
         
         viewTableName = 'CallerFiltered'
         gsWorksheet = 'https://docs.google.com/spreadsheets/d/1NHipt4yGW8yVMyeBiJpyTFzDtpA7bs4SWfaf4-uvPgk/edit#gid=0'
-        return dataViewConfig(self.configName, SrcDataTable, DestDataSet, viewTableName, gsWorksheet, ColsRequired, 'PreviousDay', 1000)
+
+        dataViewQuery = queryCallerFilteredData(SrcDataTable, ColsRequired, 'PreviousDay')
+
+        return dataViewConfig(self.configName, SrcDataTable, DestDataSet, viewTableName, gsWorksheet, ColsRequired, 'PreviousDay', dataViewQuery, 1000)
 
 class lastYearGrievanceMetrics(BoCWDataViewConfigs):
     ## Smaple Adhoc view of central sorage Table
@@ -66,7 +76,10 @@ class lastYearGrievanceMetrics(BoCWDataViewConfigs):
         
         viewTableName = 'LastYearGrievanceMetrics'
         gsWorksheet = 'https://docs.google.com/spreadsheets/d/1nL83t7KKxRZexHe8bN5W3QoSvWIPmK9yHQkH3FPiNQA/edit#gid=0'
-        return dataViewConfig(self.configName, SrcDataTable, DestDataSet, viewTableName, gsWorksheet, ColsRequired, 'PreviousDay', 1000)
+
+        dataViewQuery = querylastYearGrievanceData(SrcDataTable, ColsRequired, 'PreviousDay' )
+
+        return dataViewConfig(self.configName, SrcDataTable, DestDataSet, viewTableName, gsWorksheet, ColsRequired, 'PreviousDay', dataViewQuery, 1000)
 
 def DataViewDagConfigMap(env=None):
     """To load all data configs required for each dag associated with a particular data view to be made available through ariflow """
